@@ -1,0 +1,373 @@
+// Different premade libraries that allows the use of certain functions
+#include <FastLED.h>      
+#include <Wire.h>
+#include <TimeLib.h>
+#include <DS1307RTC.h>     
+// Definition of the NEOPIXEL type
+#define CHIPSET     WS2811
+// Nnumber of LEDS used
+#define NUM_LEDS_PER_STRIP 56
+// Output of signal from the Neopixel to arduino
+#define LED_PIN 6
+#define COLOR_ORDER GRB
+// Define lightbrightness
+#define BRIGHTNESS  255
+CRGB leds[NUM_LEDS_PER_STRIP];
+// Colortemperatures
+int color1 = 0xFF9329; // Candle
+int color2 = 0xFFC58F; // Tungsten40W
+int color3 = 0xFFD6AA; // Tungsten100W
+int color4 = 0xFFF1E0; // Halogen
+int color5 = 0xFFFAF4; // CarbonArc
+int color6 = 0xFFFFFB; // HighNoonSUN
+int color7 = 0xFFFFFF; // DirectSunlight
+int color8 = 0xC9E2FF; // OvercastSky
+int color9 = 0x409CFF; // ClearBlueSky
+//Variables for the OnOffSwitch 
+// The LEDstate indicates whether or not the button is active or not-active
+int LEDState;
+int tLEDState;
+// Button pins are the button input-channels to arduino
+int btn1Pin=2;
+int tbtnlPin=11;
+// Variable that holds the currentcolor from the potentiometer
+int currentColor;
+//Boolean variable used to reset the buttonstate after use
+boolean lastState = false;
+boolean tlastState = false;
+// Used for debugging to check the current color
+int colorState = 0;
+// Potentiometer
+int lastPotValue;
+// Potentiometer input-channel to arduino
+int potPin = A0; 
+// Since the mapping-range of the potentiometer is an uneven number; 1023, we map a new range from 0 to 200
+int Mapped;
+int newMapped;
+// Timevariable from preexisting library
+tmElements_t tm;
+// Variable that stores the temperature for a given time
+int currentTimedColor;
+// Variable that stores the monthnames
+const char *monthName[12] = {
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+};
+
+void setup() {
+  //variable used to check whether or not the realtimeclock is running or configered correct
+  bool parse=false;
+  bool config=false;
+  //Input-channels to arduino
+  pinMode (btn1Pin, INPUT_PULLUP);
+  pinMode(potPin, INPUT);
+  pinMode(tbtnlPin, INPUT_PULLUP);
+  //Defining our LED using the FastLED library
+  FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS_PER_STRIP).setCorrection( TypicalSMD5050 );
+  //Sets brightness of the LED to a specific value
+  FastLED.setBrightness( BRIGHTNESS );
+  // Loops through all the LEDS and turns them off incase another function was running upon setup.
+  for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+  leds[i]=CRGB::Black; 
+  FastLED.show();
+  }
+  
+  // get the date and time the compiler was run using the preexisting TimeLib library
+  if (getDate(__DATE__) && getTime(__TIME__)) {
+    parse = true;
+    // and configure the RTC with this info
+    if (RTC.write(tm)) {
+      config = true;
+    }
+  }
+  //Serial Monitor used to display time and date for debugging purposes
+  Serial.begin(9600);
+  while (!Serial) ; // wait for Arduino Serial Monitor
+  delay(200);
+  if (parse && config) {
+    Serial.print("DS1307 configured Time=");
+    Serial.print(__TIME__);
+    Serial.print(", Date=");
+    Serial.println(__DATE__);
+  } else if (parse) {
+    Serial.println("DS1307 Communication Error :-{");
+    Serial.println("Please check your circuitry");
+  } else {
+    Serial.print("Could not parse info from the compiler, Time=\"");
+    Serial.print(__TIME__);
+    Serial.print("\", Date=\"");
+    Serial.print(__DATE__);
+    Serial.println("\"");
+  }
+}
+
+// Functions used to declare and get time/date
+bool getTime(const char *str)
+{
+  int Hour, Min, Sec;
+
+  if (sscanf(str, "%d:%d:%d", &Hour, &Min, &Sec) != 3) return false;
+  tm.Hour = Hour;
+  tm.Minute = Min;
+  tm.Second = Sec;
+  return true;
+}
+
+bool getDate(const char *str)
+{
+  char Month[12];
+  int Day, Year;
+  uint8_t monthIndex;
+
+  if (sscanf(str, "%s %d %d", Month, &Day, &Year) != 3) return false;
+  for (monthIndex = 0; monthIndex < 12; monthIndex++) {
+    if (strcmp(Month, monthName[monthIndex]) == 0) break;
+  }
+  if (monthIndex >= 12) return false;
+  tm.Day = Day;
+  tm.Month = monthIndex + 1;
+  tm.Year = CalendarYrToTm(Year);
+  return true;
+}
+
+
+//Function used to control the potentiometer to adjust the color temperature of the light
+void lightadjust() {
+//Variable that reads the input-channel to the arduino
+int potValue = analogRead(potPin);
+//Mapping a new interval for the potentiometer, from 0 to 1023 to 0 to 200
+Mapped = map(potValue, 0, 1023, 0, 200);
+newMapped = Mapped / 25;
+if (newMapped != lastPotValue) {
+  switch(newMapped) {
+  case 0:
+    for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color1;
+    currentColor = color1;
+    colorState = 1;
+    FastLED.show(); }
+    Serial.println("0");
+    Serial.print(colorState);
+    break;
+  case 1:
+    for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color2;
+    currentColor = color2;
+    colorState = 2;
+    FastLED.show(); }
+    Serial.println("1");
+    Serial.print(colorState);
+    break;
+  case 2:
+    Serial.println("2");
+    for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color3;
+    currentColor = color3;
+    colorState = 3;
+    Serial.print(colorState);
+    FastLED.show(); }
+    break;
+  case 3:
+    for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color4;
+    currentColor = color4;
+    colorState = 4;
+    FastLED.show(); }
+    Serial.println("3");
+    Serial.print(colorState);
+    break;
+  case 4:
+      for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color5;
+    currentColor = color5;
+    colorState = 5;
+    FastLED.show(); }
+    Serial.println("4");
+    Serial.print(colorState);
+    break;
+  case 5:
+      for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color6;
+    currentColor = color6;
+    colorState = 6;
+    FastLED.show(); }
+    Serial.println("5");
+    Serial.print(colorState);
+    break;
+  case 6:
+    for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color7;
+    currentColor = color7;
+    colorState = 7;
+    FastLED.show(); }
+    Serial.println("6");
+    Serial.print(colorState);
+    break;
+  case 7:
+    for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+    leds[i]=color8;
+    currentColor = color8;
+    colorState = 8;
+    FastLED.show(); }
+    Serial.println("7");
+    Serial.print(colorState);
+    break;
+  default:
+    Serial.println("Error");
+    break;  
+    }
+  lastPotValue = potValue;
+    }
+}
+
+//Function that changes the color temperatures based on the time of day
+void timedLightOn(){
+  RTC.read(tm);
+  //If the hour is more or equal to 8 and less than or equal to 10, activate certain lighttemperature
+      if(tm.Hour >= 8 && tm.Hour <= 10)
+      {
+        Serial.println("I WORK1");
+      }
+      //If the hour is more or equal to 19 and less than or equal to 12, activate certain lighttemperature
+      if(tm.Hour >= 10 && tm.Hour <= 12)
+      {
+        Serial.println("I WORK2");
+      }
+      //If the hour is more or equal to 12 and less than or equal to 14, activate certain lighttemperature
+      if(tm.Hour >= 12 && tm.Hour <= 14)
+      {
+        Serial.println("I WORK3");
+      }
+      //If the hour is more or equal to 14 and less than or equal to 16, activate certain lighttemperature
+      if(tm.Hour >= 14 && tm.Hour <= 16)
+      {
+        Serial.println("I WORK4");
+    }
+}
+
+
+// Function that reads and displays the current time and date in ther serial monitor for debugging purposes.  
+void timedLightRead(){
+  tmElements_t tm;
+  if (RTC.read(tm)) {
+    Serial.print("Ok, Time = ");
+    print2digits(tm.Hour);
+    Serial.write(':');
+    print2digits(tm.Minute);
+    Serial.write(':');
+    print2digits(tm.Second);
+    Serial.print(", Date (D/M/Y) = ");
+    Serial.print(tm.Day);
+    Serial.write('/');
+    Serial.print(tm.Month);
+    Serial.write('/');
+    Serial.print(tmYearToCalendar(tm.Year));
+    Serial.println();
+  } else {
+    if (RTC.chipPresent()) {
+      Serial.println("The DS1307 is stopped.  Please run the SetTime");
+      Serial.println("example to initialize the time and begin running.");
+      Serial.println();
+    } else {
+      Serial.println("DS1307 read error!  Please check the circuitry.");
+      Serial.println();
+    }
+  }
+}
+
+// Function that prints pretty numbers
+void print2digits(int number) {
+  if (number >= 0 && number < 10) {
+    Serial.write('0');
+  }
+  Serial.print(number);
+}
+
+void loop(){
+// Statement that reads the potentiometer input
+int potValue = analogRead(potPin);
+// Mapped range of the potentiometer
+Mapped = map(potValue, 0, 1023, 0, 2000);
+newMapped = Mapped / 250;
+//Function that displays time and date in the serial monitor for debugging
+timedLightRead();
+// Statements that reads the current time (tm)
+RTC.read(tm);
+
+// When the buttons are unpressed, they signal LOW to the arduino. When they're pressed, they signal HIGH to the arduino. 
+// Without edge detection, the user would have to hold a button down to achieve a certain type of light.
+// To prevent this, we use edge detection which is defined as variable that indicates certain button state.
+// This causes the user to be able to press and release a button to activate a certain type of light, and simustanously signaling both LOW and HIGH to the arduino.
+
+// If the Button has been pressed, signaling both high and low, the light will turn on and activate the function that displays certain light-temperatures at specific times in the day
+if (tLEDState == 0) {
+  RTC.read(tm);
+  timedLightOn();
+}
+
+
+//Timed Light Button
+//We read the input-channel from the button
+boolean tbtnPressed = digitalRead(11);
+// We compare if the button has changed from HIGH to LOW, completing one press and release of the button
+ if (tbtnPressed == true && tlastState == false) {
+  // If that's true we activate tLEDstate 1, which immediately changes the state to 0 and actiavtes the timedLightOn() function
+    if (tLEDState==1){
+      RTC.read(tm);
+      timedLightOn();
+      Serial.println("Timed Lights On");
+      digitalWrite(LED_PIN,HIGH);
+      for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+      leds[i]=CRGB::Blue;
+      FastLED.show(); }
+      tLEDState=0;
+      LEDState=0;
+      }
+      // If we press the button again, meanwhile the current tLEDState = 0, we change the tLEDstate to = 1 again and turns off the light. 
+      else if (tLEDState == 0) {
+      Serial.println("Timed Lights Off");
+      digitalWrite(LED_PIN, LOW);
+      for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+      leds[i]=CRGB::Black;
+      FastLED.show(); }
+      tLEDState=1;
+      }
+    }
+tlastState = tbtnPressed;
+
+
+// ON OFFSWITCH
+
+boolean btnPressed = digitalRead(2);
+if (LEDState == 1){
+  int potValue = analogRead(potPin);
+  Mapped = map(potValue, 0, 1023, 0, 2000);
+  newMapped = Mapped / 250;
+  lightadjust();
+}
+
+ if (btnPressed == true && lastState == false)
+    {
+    if (LEDState==0){
+      digitalWrite(LED_PIN,HIGH);
+      Serial.println("Potentiometer Lights On");
+      for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+      int potValue = analogRead(potPin);
+      Mapped = map(potValue, 0, 1023, 0, 2000);
+      newMapped = Mapped / 250;
+      leds[i]=currentColor;
+      Serial.print(colorState);
+      FastLED.show(); }
+      LEDState=1;
+      }
+     else if(LEDState == 1) {
+      Serial.println("Potentiometer Lights Off");
+      digitalWrite(LED_PIN, LOW);
+      for(int i = 0; i < NUM_LEDS_PER_STRIP; i++){
+      leds[i]=CRGB::Black;
+      FastLED.show(); }
+      LEDState=0;
+      }
+    }
+  lastState = btnPressed;
+}
